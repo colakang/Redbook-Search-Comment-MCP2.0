@@ -1,1 +1,26 @@
 .DS_Store
+venv
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.env
+.venv
+env/
+ENV/
+
+# 浏览器数据相关
+browser_data/
+backup_browser_data/
+browser_data
+*.pma
+*.ldb
+*.log
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+Cookies*
+*.cache
+*.settings
