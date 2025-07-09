@@ -5,64 +5,24 @@ services:
     build: .
     container_name: xhs-mcp-server
     ports:
-      - "8080:8080"  # MCP SSE端口
+      - "8080:8080"  # MCP服务端口
       - "5901:5900"  # VNC端口
     environment:
-      # VNC模式配置
       - VNC_MODE=true
-      
-      # MCP服务器配置
-      - MCP_HOST=0.0.0.0
-      - MCP_PORT=8080
-      
-      # 浏览器配置
       - HEADLESS_MODE=false
       - BROWSER_DATA_DIR=/app/browser_data
       
-      # X11配置（容器内部）
-      - DISPLAY=:0
-      - DBUS_SESSION_BUS_ADDRESS=/dev/null
-      
-      # 无头服务器标识
-      - HEADLESS_HOST=true
-      
     volumes:
-      # 持久化浏览器数据
       - ./browser_data:/app/browser_data
-      # 持久化日志
       - ./logs:/app/logs
-      # 环境配置文件
       - ./.env:/app/.env
-      # 注意：不挂载宿主机的X11目录！
       
-    # Docker配置
     shm_size: 2gb
-    
-    # 重启策略
     restart: unless-stopped
     
-    # 停止配置
-    stop_signal: SIGTERM
-    stop_grace_period: 30s
-    
-    # 健康检查
     #healthcheck:
-    #  test: ["CMD-SHELL", "pgrep -f x11vnc && curl -f http://localhost:8080/health || exit 1"]
+    #  test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
     #  interval: 30s
     #  timeout: 10s
     #  retries: 3
     #  start_period: 60s
-    
-    # 资源限制
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 4G
-        reservations:
-          cpus: '0.5'
-          memory: 1G
-
-networks:
-  default:
-    name: xhs-mcp-network
