@@ -35,15 +35,40 @@ if [ "$VNC_MODE" = "true" ]; then
     
     # 在VNC模式下启动Chrome（供手动操作）
     echo "启动Chrome浏览器（VNC模式）..."
-    google-chrome \
+    
+    # 检查Chrome是否存在
+    if command -v google-chrome-stable >/dev/null 2>&1; then
+        CHROME_CMD="google-chrome-stable"
+    elif command -v google-chrome >/dev/null 2>&1; then
+        CHROME_CMD="google-chrome"
+    elif command -v chromium >/dev/null 2>&1; then
+        CHROME_CMD="chromium"
+    else
+        echo "警告: 未找到Chrome浏览器，使用Playwright的Chromium"
+        CHROME_CMD="/root/.cache/ms-playwright/chromium-*/chrome-linux/chrome"
+    fi
+    
+    # 启动Chrome
+    $CHROME_CMD \
         --no-sandbox \
         --disable-dev-shm-usage \
         --disable-gpu \
+        --disable-software-rasterizer \
+        --disable-background-timer-throttling \
+        --disable-backgrounding-occluded-windows \
+        --disable-renderer-backgrounding \
         --remote-debugging-port=9222 \
         --user-data-dir=/app/browser_data \
         --window-size=1920,1080 \
-        "https://www.xiaohongshu.com" &
+        --start-maximized \
+        "https://www.xiaohongshu.com" >/dev/null 2>&1 &
     CHROME_PID=$!
+    
+    if [ $? -eq 0 ]; then
+        echo "Chrome浏览器启动成功 (PID: $CHROME_PID)"
+    else
+        echo "Chrome浏览器启动失败，但VNC仍可用"
+    fi
 fi
 
 # 等待服务启动
@@ -63,16 +88,23 @@ echo "==================================="
 # 清理函数
 cleanup() {
     echo "正在关闭服务..."
-    if [ ! -z "$VNC_PID" ]; then
+    if [ ! -z "$CHROME_PID" ] && kill -0 "$CHROME_PID" 2>/dev/null; then
+        echo "关闭Chrome浏览器..."
+        kill $CHROME_PID 2>/dev/null
+        sleep 2
+        # 强制结束Chrome进程
+        pkill -f chrome 2>/dev/null
+    fi
+    if [ ! -z "$VNC_PID" ] && kill -0 "$VNC_PID" 2>/dev/null; then
+        echo "关闭VNC服务器..."
         kill $VNC_PID 2>/dev/null
     fi
-    if [ ! -z "$CHROME_PID" ]; then
-        kill $CHROME_PID 2>/dev/null
-    fi
-    if [ ! -z "$FLUXBOX_PID" ]; then
+    if [ ! -z "$FLUXBOX_PID" ] && kill -0 "$FLUXBOX_PID" 2>/dev/null; then
+        echo "关闭窗口管理器..."
         kill $FLUXBOX_PID 2>/dev/null
     fi
-    if [ ! -z "$XVFB_PID" ]; then
+    if [ ! -z "$XVFB_PID" ] && kill -0 "$XVFB_PID" 2>/dev/null; then
+        echo "关闭虚拟显示..."
         kill $XVFB_PID 2>/dev/null
     fi
     exit 0
