@@ -29,7 +29,7 @@ if [ "$VNC_MODE" = "true" ]; then
     
     echo "==================================="
     echo "VNC服务器已启动"
-    echo "VNC地址: <服务器IP>:5900"
+    echo "VNC地址: <服务器IP>:5901"
     echo "VNC密码: xhstools"
     echo "==================================="
     
@@ -54,7 +54,7 @@ echo "==================================="
 echo "服务信息:"
 echo "MCP SSE服务地址: http://<服务器IP>:8080/sse"
 if [ "$VNC_MODE" = "true" ]; then
-    echo "VNC地址: <服务器IP>:5900"
+    echo "VNC地址: <服务器IP>:5901"
     echo "VNC密码: xhstools"
 fi
 echo "健康检查: http://<服务器IP>:8080/health"

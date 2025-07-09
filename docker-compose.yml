@@ -6,7 +6,7 @@ services:
     container_name: xhs-mcp-server
     ports:
       - "8080:8080"  # MCP SSE端口
-      - "5900:5900"  # VNC端口
+      - "5901:5900"  # VNC端口
     environment:
       # VNC模式配置
       - VNC_MODE=true
