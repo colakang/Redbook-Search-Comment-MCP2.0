@@ -34,3 +34,4 @@ pydantic>=2.0.0        # 数据验证（FastAPI依赖）
 # 日志和监控
 structlog>=23.0.0      # 结构化日志
 prometheus-client>=0.17.0  # 监控指标（可选）
+tenacity>=8.0.0

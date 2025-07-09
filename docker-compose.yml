@@ -19,9 +19,9 @@ services:
       - HEADLESS_MODE=false
       - BROWSER_DATA_DIR=/app/browser_data
       
-      # 可选：自动登录配置（headless模式用）
-      # - XHS_USERNAME=your_username
-      # - XHS_PASSWORD=your_password
+      # X11和VNC配置
+      - DISPLAY=:0
+      - DBUS_SESSION_BUS_ADDRESS=/dev/null
       
     volumes:
       # 持久化浏览器数据
@@ -30,28 +30,43 @@ services:
       - ./logs:/app/logs
       # 环境配置文件
       - ./.env:/app/.env
+      # X11临时文件目录（重要！）
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
       
+    # Docker特权和共享内存配置
+    privileged: false
+    shm_size: 2gb
+    
+    # 安全配置
+    security_opt:
+      - seccomp:unconfined
+    
+    # 重启策略
     restart: unless-stopped
+    
+    # 停止信号和超时
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
     
     # 健康检查
     #healthcheck:
-    #  test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+    #  test: ["CMD-SHELL", "pgrep -f x11vnc && curl -f http://localhost:8080/health || exit 1"]
     #  interval: 30s
     #  timeout: 10s
     #  retries: 3
     #  start_period: 60s
     
-    # 资源限制（可选）
-    # deploy:
-    #   resources:
-    #     limits:
-    #       cpus: '2.0'
-    #       memory: 2G
-    #     reservations:
-    #       cpus: '0.5'
-    #       memory: 512M
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
 
-# 网络配置（可选）
+# 网络配置
 networks:
   default:
     name: xhs-mcp-network

@@ -2,11 +2,21 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 安装系统依赖和浏览器 + VNC组件
+# 设置环境变量
+ENV DEBIAN_FRONTEND=noninteractive
+ENV DISPLAY=:0
+ENV DBUS_SESSION_BUS_ADDRESS=/dev/null
+
+# 安装系统依赖
 RUN apt-get update && apt-get install -y \
+    # 基础工具
     wget \
     gnupg \
     ca-certificates \
+    curl \
+    procps \
+    psmisc \
+    # Chrome依赖
     fonts-liberation \
     libasound2 \
     libatk-bridge2.0-0 \
@@ -26,15 +36,16 @@ RUN apt-get update && apt-get install -y \
     libxkbcommon0 \
     libxrandr2 \
     xdg-utils \
-    # VNC和虚拟显示支持
+    # X11和VNC支持
     xvfb \
     x11vnc \
-    tightvncserver \
+    x11-utils \
+    x11-xserver-utils \
     fluxbox \
     dbus-x11 \
-    # 实用工具
-    curl \
-    procps \
+    # 字体支持
+    fonts-wqy-zenhei \
+    fonts-noto-cjk \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -45,35 +56,44 @@ RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add
     apt-get install -y google-chrome-stable && \
     rm -rf /var/lib/apt/lists/*
 
+# 创建X11目录并设置权限
+RUN mkdir -p /tmp/.X11-unix && \
+    chmod 1777 /tmp/.X11-unix
+
 # 设置VNC密码
 RUN mkdir -p /root/.vnc && \
     echo "xhstools" | vncpasswd -f > /root/.vnc/passwd && \
     chmod 600 /root/.vnc/passwd
 
-# 复制项目文件
+# 复制requirements.txt并安装Python依赖
 COPY requirements.txt .
-COPY xiaohongshu_mcp_sse.py .
-COPY .env .
-COPY docker/ ./docker/
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# 安装Python依赖
-RUN pip install --no-cache-dir -r requirements.txt
+# 验证关键依赖
+RUN python -c "import tenacity; print('✓ tenacity 安装成功')" && \
+    python -c "import playwright; print('✓ playwright 安装成功')" && \
+    python -c "import fastapi; print('✓ fastapi 安装成功')"
 
 # 安装Playwright浏览器
 RUN playwright install chromium --with-deps
 
-# 创建必要的目录
-RUN mkdir -p browser_data data logs
+# 复制应用文件
+COPY xiaohongshu_mcp_sse.py .
+COPY .env .
+COPY docker/ ./docker/
 
-# 设置启动脚本权限
-RUN chmod +x docker/start.sh
+# 创建必要的目录并设置权限
+RUN mkdir -p browser_data data logs && \
+    chmod -R 755 /app && \
+    chmod +x docker/start.sh
 
 # 暴露端口
 EXPOSE 8080 5900
 
 # 健康检查
 #HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-#    CMD curl -f http://localhost:8080/health || exit 1
+#    CMD pgrep -f x11vnc >/dev/null && curl -f http://localhost:8080/health || exit 1
 
-# 使用启动脚本
+# 使用改进的启动脚本
 CMD ["./docker/start.sh"]
