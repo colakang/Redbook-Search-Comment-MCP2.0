@@ -29,6 +29,7 @@ RUN apt-get update && apt-get install -y \
     # VNC和虚拟显示支持
     xvfb \
     x11vnc \
+    tightvncserver \
     fluxbox \
     dbus-x11 \
     # 实用工具
