@@ -1,12 +1,36 @@
+# Docker环境下的requirements.txt
+
+# 核心MCP和Web框架
+fastmcp>=2.0.0
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+mcp[cli]>=1.0.0
+
+# 浏览器自动化
 playwright>=1.40.0
-pytest-playwright>=0.4.0
-pandas>=2.1.1
-numpy>=1.26.4
-asyncio==3.4.3
-mcp[cli]
+
+# 环境配置和HTTP
 python-dotenv==1.0.0
 requests==2.31.0
+
+# 数据处理（Docker环境推荐预装）
+pandas>=2.1.1
+numpy>=1.26.4
+
+# 工具库
 schedule==1.2.0
 tqdm==4.66.1
-fastapi>=0.95.1
-uvicorn>=0.22.0
+
+# 测试工具（Docker开发环境）
+pytest-playwright>=0.4.0
+pytest>=7.0.0
+
+# Docker环境额外依赖
+psutil>=5.9.0          # 系统监控
+aiofiles>=23.0.0       # 异步文件操作
+websockets>=11.0.0     # WebSocket支持（VNC可能需要）
+pydantic>=2.0.0        # 数据验证（FastAPI依赖）
+
+# 日志和监控
+structlog>=23.0.0      # 结构化日志
+prometheus-client>=0.17.0  # 监控指标（可选）
