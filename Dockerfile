@@ -45,6 +45,7 @@ RUN mkdir -p /root/.vnc && \
 # 复制项目文件
 COPY requirements.txt .
 COPY xiaohongshu_mcp_sse.py .
+COPY .env .
 COPY docker/ ./docker/
 
 # 安装Python依赖
@@ -63,8 +64,8 @@ RUN chmod +x docker/start.sh
 EXPOSE 8080 5900
 
 # 健康检查
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+#HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+#    CMD curl -f http://localhost:8080/health || exit 1
 
 # 使用启动脚本
 CMD ["./docker/start.sh"]
