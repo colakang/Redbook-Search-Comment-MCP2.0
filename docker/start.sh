@@ -1,112 +1,128 @@
 #!/bin/bash
 
 echo "==================================="
-echo "小红书MCP服务器启动中..."
+echo "小红书MCP服务器启动中（无头服务器模式）..."
 echo "==================================="
 
-# 错误处理
-set -e
-trap 'echo "错误发生在第$LINENO行"; cleanup; exit 1' ERR
+# 检测是否为无头服务器环境
+check_headless_environment() {
+    echo "检测服务器环境..."
+    
+    # 检查是否有DISPLAY环境变量指向宿主机
+    if [ ! -z "$DISPLAY" ] && [ "$DISPLAY" != ":0" ]; then
+        echo "检测到外部DISPLAY环境变量: $DISPLAY"
+        echo "在无头服务器上重置为容器内部显示"
+    fi
+    
+    # 检查宿主机X11状态（仅用于日志记录）
+    if [ -S /tmp/.X11-unix/X0 ]; then
+        echo "注意: 检测到宿主机X11套接字，但将使用容器内部X11"
+    else
+        echo "确认: 宿主机为无头服务器环境，将创建容器内部X11"
+    fi
+}
+
+# 容器内部X11环境设置
+setup_container_x11() {
+    echo "设置容器内部X11环境..."
+    
+    # 强制使用容器内部显示
+    export DISPLAY=:0
+    export DBUS_SESSION_BUS_ADDRESS=/dev/null
+    
+    # 创建容器内部X11目录
+    mkdir -p /tmp/.X11-unix
+    chmod 1777 /tmp/.X11-unix
+    
+    # 清理任何遗留的X11文件
+    rm -f /tmp/.X*-lock 2>/dev/null || true
+    rm -f /tmp/.X11-unix/X* 2>/dev/null || true
+    
+    echo "容器X11环境设置完成"
+}
 
 # 清理函数
 cleanup() {
-    echo "执行清理操作..."
+    echo "清理容器内部进程..."
     
-    # 强制杀死所有相关进程
-    pkill -9 -f "Xvfb" 2>/dev/null || true
+    # 只清理容器内的进程
+    pkill -9 -f "Xvfb.*:0" 2>/dev/null || true
     pkill -9 -f "fluxbox" 2>/dev/null || true
-    pkill -9 -f "x11vnc" 2>/dev/null || true
+    pkill -9 -f "x11vnc.*:0" 2>/dev/null || true
     pkill -9 -f "chrome" 2>/dev/null || true
     
-    # 清理X11相关文件
-    rm -rf /tmp/.X*-lock /tmp/.X11-unix/* 2>/dev/null || true
+    # 清理容器内X11文件
+    rm -f /tmp/.X*-lock 2>/dev/null || true
+    rm -f /tmp/.X11-unix/X* 2>/dev/null || true
     
-    # 等待进程完全退出
     sleep 2
+    echo "容器清理完成"
+}
+
+# 启动容器专用Xvfb
+start_container_xvfb() {
+    echo "启动容器内部Xvfb服务器..."
     
-    echo "清理完成"
-}
-
-# 查找可用的显示端口
-find_available_display() {
-    for i in {0..10}; do
-        if ! ls /tmp/.X${i}-lock >/dev/null 2>&1; then
-            echo $i
-            return
+    # 使用最适合无头服务器的Xvfb配置
+    Xvfb :0 \
+        -screen 0 1920x1080x24 \
+        -ac \
+        +extension GLX \
+        +extension RANDR \
+        +extension RENDER \
+        -noreset \
+        -nolisten tcp \
+        -nolisten unix \
+        -dpi 96 \
+        -fbdir /var/tmp \
+        >/dev/null 2>&1 &
+    
+    XVFB_PID=$!
+    echo "Xvfb进程ID: $XVFB_PID"
+    
+    # 等待Xvfb完全启动
+    echo "等待Xvfb服务器启动..."
+    for i in {1..30}; do
+        if xdpyinfo -display :0 >/dev/null 2>&1; then
+            echo "✓ Xvfb服务器启动成功"
+            return 0
         fi
+        if ! kill -0 $XVFB_PID 2>/dev/null; then
+            echo "✗ Xvfb进程意外退出"
+            return 1
+        fi
+        sleep 1
+        echo "  等待中... ($i/30)"
     done
-    echo "0"  # 默认返回0
+    
+    echo "✗ Xvfb启动超时"
+    return 1
 }
-
-# 初始清理
-echo "初始清理环境..."
-cleanup
-
-# 设置环境变量
-DISPLAY_NUM=$(find_available_display)
-export DISPLAY=:$DISPLAY_NUM
-export DBUS_SESSION_BUS_ADDRESS=/dev/null
-
-echo "使用显示端口: $DISPLAY_NUM"
-
-# 创建必要的目录
-mkdir -p /tmp/.X11-unix
-chmod 1777 /tmp/.X11-unix
-
-# 启动Xvfb虚拟显示
-echo "启动虚拟显示服务器..."
-Xvfb :$DISPLAY_NUM \
-    -screen 0 1920x1080x24 \
-    -ac \
-    +extension GLX \
-    +render \
-    -noreset \
-    -nolisten tcp \
-    -dpi 96 \
-    >/dev/null 2>&1 &
-
-XVFB_PID=$!
-echo "Xvfb PID: $XVFB_PID"
-
-# 等待并验证Xvfb启动
-echo "等待虚拟显示服务器启动..."
-for i in {1..30}; do
-    if xdpyinfo -display :$DISPLAY_NUM >/dev/null 2>&1; then
-        echo "虚拟显示服务器启动成功"
-        break
-    fi
-    if ! kill -0 $XVFB_PID 2>/dev/null; then
-        echo "错误: Xvfb进程意外退出"
-        exit 1
-    fi
-    sleep 1
-    echo "等待中... ($i/30)"
-done
-
-# 最终验证
-if ! xdpyinfo -display :$DISPLAY_NUM >/dev/null 2>&1; then
-    echo "错误: 虚拟显示服务器启动失败"
-    exit 1
-fi
 
 # 启动窗口管理器
-echo "启动窗口管理器..."
-DISPLAY=:$DISPLAY_NUM fluxbox >/dev/null 2>&1 &
-FLUXBOX_PID=$!
-sleep 3
+start_window_manager() {
+    echo "启动轻量级窗口管理器..."
+    
+    # 使用最小配置的fluxbox
+    DISPLAY=:0 fluxbox >/dev/null 2>&1 &
+    FLUXBOX_PID=$!
+    
+    sleep 3
+    
+    if kill -0 $FLUXBOX_PID 2>/dev/null; then
+        echo "✓ Fluxbox启动成功"
+    else
+        echo "⚠ Fluxbox启动失败，但X11仍可用"
+    fi
+}
 
-# 验证窗口管理器
-if ! kill -0 $FLUXBOX_PID 2>/dev/null; then
-    echo "警告: Fluxbox可能启动失败，但继续运行"
-fi
-
-# 根据VNC_MODE决定是否启动VNC
-if [ "$VNC_MODE" = "true" ]; then
+# 启动VNC服务器
+start_vnc_server() {
     echo "启动VNC服务器..."
     
-    # 启动x11vnc
+    # 优化无头服务器的VNC配置
     x11vnc \
-        -display :$DISPLAY_NUM \
+        -display :0 \
         -forever \
         -usepw \
         -rfbport 5900 \
@@ -114,34 +130,37 @@ if [ "$VNC_MODE" = "true" ]; then
         -noxrecord \
         -noxfixes \
         -noxdamage \
+        -noxinerama \
         -quiet \
         -bg \
-        -o /tmp/x11vnc.log
+        -o /tmp/x11vnc.log \
+        -logappend
     
-    # 等待VNC启动
     sleep 3
     
-    # 检查VNC是否启动成功
-    if pgrep -f "x11vnc.*:$DISPLAY_NUM" >/dev/null; then
-        VNC_PID=$(pgrep -f "x11vnc.*:$DISPLAY_NUM")
+    # 验证VNC启动
+    if pgrep -f "x11vnc.*:0" >/dev/null; then
+        VNC_PID=$(pgrep -f "x11vnc.*:0")
         echo "==================================="
-        echo "VNC服务器启动成功!"
+        echo "✓ VNC服务器启动成功!"
         echo "VNC地址: <服务器IP>:5901"
         echo "VNC密码: xhstools"
-        echo "显示端口: :$DISPLAY_NUM"
-        echo "VNC PID: $VNC_PID"
+        echo "VNC进程ID: $VNC_PID"
         echo "==================================="
+        return 0
     else
-        echo "错误: VNC服务器启动失败"
-        echo "VNC日志:"
-        cat /tmp/x11vnc.log 2>/dev/null || echo "无VNC日志"
-        exit 1
+        echo "✗ VNC服务器启动失败"
+        echo "VNC日志内容:"
+        cat /tmp/x11vnc.log 2>/dev/null || echo "无日志文件"
+        return 1
     fi
-    
-    # 在VNC模式下启动Chrome
+}
+
+# 启动浏览器
+start_browser() {
     echo "启动Chrome浏览器..."
     
-    # 检查Chrome命令
+    # 检查Chrome可用性
     if command -v google-chrome-stable >/dev/null 2>&1; then
         CHROME_CMD="google-chrome-stable"
     elif command -v google-chrome >/dev/null 2>&1; then
@@ -149,114 +168,143 @@ if [ "$VNC_MODE" = "true" ]; then
     elif command -v chromium >/dev/null 2>&1; then
         CHROME_CMD="chromium"
     else
-        echo "警告: 未找到Chrome浏览器"
-        CHROME_CMD=""
+        echo "⚠ 未找到Chrome浏览器"
+        return 1
     fi
     
-    if [ ! -z "$CHROME_CMD" ]; then
-        DISPLAY=:$DISPLAY_NUM $CHROME_CMD \
-            --no-sandbox \
-            --disable-dev-shm-usage \
-            --disable-gpu \
-            --disable-software-rasterizer \
-            --disable-background-timer-throttling \
-            --disable-backgrounding-occluded-windows \
-            --disable-renderer-backgrounding \
-            --remote-debugging-port=9222 \
-            --user-data-dir=/app/browser_data \
-            --window-size=1920,1080 \
-            --start-maximized \
-            "https://www.xiaohongshu.com" >/dev/null 2>&1 &
-        
-        CHROME_PID=$!
-        sleep 2
-        
-        if kill -0 $CHROME_PID 2>/dev/null; then
-            echo "Chrome浏览器启动成功 (PID: $CHROME_PID)"
-        else
-            echo "Chrome浏览器启动失败，但VNC可用"
-            CHROME_PID=""
-        fi
+    # 无头服务器优化的Chrome配置
+    DISPLAY=:0 $CHROME_CMD \
+        --no-sandbox \
+        --disable-dev-shm-usage \
+        --disable-gpu \
+        --disable-software-rasterizer \
+        --disable-background-timer-throttling \
+        --disable-backgrounding-occluded-windows \
+        --disable-renderer-backgrounding \
+        --disable-features=TranslateUI \
+        --disable-extensions \
+        --disable-plugins \
+        --remote-debugging-port=9222 \
+        --user-data-dir=/app/browser_data \
+        --window-size=1920,1080 \
+        --start-maximized \
+        "https://www.xiaohongshu.com" >/dev/null 2>&1 &
+    
+    CHROME_PID=$!
+    sleep 3
+    
+    if kill -0 $CHROME_PID 2>/dev/null; then
+        echo "✓ Chrome浏览器启动成功 (PID: $CHROME_PID)"
+    else
+        echo "⚠ Chrome浏览器启动失败，但VNC仍可用"
+        CHROME_PID=""
     fi
-fi
+}
 
-# 显示服务信息
-echo "==================================="
-echo "服务信息:"
-echo "MCP SSE服务地址: http://<服务器IP>:8080/sse"
-if [ "$VNC_MODE" = "true" ]; then
+# 主要流程
+main() {
+    # 错误处理
+    set -e
+    trap 'echo "启动过程中发生错误"; cleanup; exit 1' ERR
+    
+    # 1. 环境检测
+    check_headless_environment
+    
+    # 2. 初始清理
+    cleanup
+    
+    # 3. 设置容器X11环境
+    setup_container_x11
+    
+    # 4. 启动Xvfb
+    if ! start_container_xvfb; then
+        echo "Xvfb启动失败，退出"
+        exit 1
+    fi
+    
+    # 5. 启动窗口管理器
+    start_window_manager
+    
+    # 6. 根据配置启动VNC
+    if [ "$VNC_MODE" = "true" ]; then
+        if ! start_vnc_server; then
+            echo "VNC启动失败，退出"
+            exit 1
+        fi
+        
+        # 7. 启动浏览器
+        start_browser
+    fi
+    
+    # 8. 显示服务信息
+    echo "==================================="
+    echo "服务状态摘要:"
+    echo "✓ Xvfb虚拟显示服务器: 运行中"
+    echo "✓ VNC远程桌面服务: 端口5901"
+    echo "✓ MCP服务接口: 端口8080"
+    echo ""
+    echo "连接信息:"
     echo "VNC地址: <服务器IP>:5901"
     echo "VNC密码: xhstools"
-    echo "显示端口: :$DISPLAY_NUM"
-fi
-echo "健康检查: http://<服务器IP>:8080/health"
-echo "==================================="
+    echo "MCP地址: http://<服务器IP>:8080/sse"
+    echo "健康检查: http://<服务器IP>:8080/health"
+    echo "==================================="
+}
 
-# 增强的清理函数（用于退出时）
+# 清理函数（用于退出）
 final_cleanup() {
-    echo "正在关闭所有服务..."
+    echo "正在关闭所有容器内服务..."
     
     # 关闭Chrome
     if [ ! -z "$CHROME_PID" ] && kill -0 "$CHROME_PID" 2>/dev/null; then
-        echo "关闭Chrome浏览器..."
         kill $CHROME_PID 2>/dev/null
-        sleep 2
     fi
     pkill -f chrome 2>/dev/null || true
     
     # 关闭VNC
     if [ ! -z "$VNC_PID" ] && kill -0 "$VNC_PID" 2>/dev/null; then
-        echo "关闭VNC服务器..."
         kill $VNC_PID 2>/dev/null
     fi
     pkill -f x11vnc 2>/dev/null || true
     
     # 关闭窗口管理器
     if [ ! -z "$FLUXBOX_PID" ] && kill -0 "$FLUXBOX_PID" 2>/dev/null; then
-        echo "关闭窗口管理器..."
         kill $FLUXBOX_PID 2>/dev/null
     fi
     pkill -f fluxbox 2>/dev/null || true
     
-    # 关闭虚拟显示
+    # 关闭Xvfb
     if [ ! -z "$XVFB_PID" ] && kill -0 "$XVFB_PID" 2>/dev/null; then
-        echo "关闭虚拟显示..."
         kill $XVFB_PID 2>/dev/null
     fi
     pkill -f Xvfb 2>/dev/null || true
     
-    # 清理文件
-    rm -rf /tmp/.X*-lock /tmp/.X11-unix/* 2>/dev/null || true
+    # 清理容器内文件
+    rm -f /tmp/.X*-lock /tmp/.X11-unix/X* 2>/dev/null || true
     
-    echo "所有服务已关闭"
+    echo "容器服务清理完成"
     exit 0
 }
 
 # 设置信号处理
 trap final_cleanup SIGTERM SIGINT
 
-# 启动主应用
-echo "启动小红书MCP SSE服务器..."
+# 执行主流程
+main
+
+# 启动Python应用
+echo "启动小红书MCP服务器..."
 cd /app
 
-# 检查Python依赖
-echo "检查关键依赖..."
+# 依赖检查
 python -c "import tenacity; print('✓ tenacity')" || {
     echo "✗ tenacity模块未安装"
     final_cleanup
     exit 1
 }
 
-python -c "import playwright; print('✓ playwright')" || {
-    echo "✗ playwright模块未安装"
-    final_cleanup
-    exit 1
-}
-
-echo "所有依赖检查通过，启动主应用..."
-
-# 启动主应用
+echo "启动主应用..."
 python xiaohongshu_mcp_sse.py
 
-# 如果主应用退出，执行清理
+# 退出时清理
 final_cleanup

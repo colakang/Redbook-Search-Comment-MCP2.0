@@ -19,9 +19,12 @@ services:
       - HEADLESS_MODE=false
       - BROWSER_DATA_DIR=/app/browser_data
       
-      # X11和VNC配置
+      # X11配置（容器内部）
       - DISPLAY=:0
       - DBUS_SESSION_BUS_ADDRESS=/dev/null
+      
+      # 无头服务器标识
+      - HEADLESS_HOST=true
       
     volumes:
       # 持久化浏览器数据
@@ -30,21 +33,15 @@ services:
       - ./logs:/app/logs
       # 环境配置文件
       - ./.env:/app/.env
-      # X11临时文件目录（重要！）
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # 注意：不挂载宿主机的X11目录！
       
-    # Docker特权和共享内存配置
-    privileged: false
+    # Docker配置
     shm_size: 2gb
-    
-    # 安全配置
-    security_opt:
-      - seccomp:unconfined
     
     # 重启策略
     restart: unless-stopped
     
-    # 停止信号和超时
+    # 停止配置
     stop_signal: SIGTERM
     stop_grace_period: 30s
     
@@ -66,7 +63,6 @@ services:
           cpus: '0.5'
           memory: 1G
 
-# 网络配置
 networks:
   default:
     name: xhs-mcp-network
