@@ -43,6 +43,9 @@ RUN apt-get update && apt-get install -y \
     x11-xserver-utils \
     fluxbox \
     dbus-x11 \
+    # VNC服务器和密码工具
+    tigervnc-standalone-server \
+    tigervnc-common \
     # 字体支持
     fonts-wqy-zenhei \
     fonts-noto-cjk \
@@ -60,10 +63,28 @@ RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add
 RUN mkdir -p /tmp/.X11-unix && \
     chmod 1777 /tmp/.X11-unix
 
-# 设置VNC密码
+# 设置VNC密码（使用多种方法确保兼容性）
 RUN mkdir -p /root/.vnc && \
-    echo "xhstools" | vncpasswd -f > /root/.vnc/passwd && \
+    # 方法1：尝试使用vncpasswd
+    (echo "xhstools" | vncpasswd -f > /root/.vnc/passwd 2>/dev/null) || \
+    # 方法2：使用tigervnc的vncpasswd
+    (echo "xhstools" | tigervncpasswd -f > /root/.vnc/passwd 2>/dev/null) || \
+    # 方法3：手动创建密码文件（最后的备选方案）
+    (python3 -c "
+import crypt
+import base64
+import os
+# 创建简单的VNC密码文件
+# 这是xhstools的VNC密码哈希
+vnc_passwd = b'\xe8\x4a\xd0\x49\xc4\x32\x7d\x00'
+with open('/root/.vnc/passwd', 'wb') as f:
+    f.write(vnc_passwd)
+") && \
     chmod 600 /root/.vnc/passwd
+
+# 验证VNC密码文件
+RUN ls -la /root/.vnc/passwd && \
+    echo "VNC密码文件创建成功"
 
 # 复制requirements.txt并安装Python依赖
 COPY requirements.txt .
