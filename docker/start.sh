@@ -8,22 +8,34 @@ echo "==================================="
 export DISPLAY=:0
 export DBUS_SESSION_BUS_ADDRESS=/dev/null
 
-# 清理旧进程
+# 清理旧进程和锁文件
 cleanup_processes() {
+    echo "清理进程和锁文件..."
     pkill -f Xvfb 2>/dev/null || true
     pkill -f fluxbox 2>/dev/null || true
     pkill -f x11vnc 2>/dev/null || true
     pkill -f chrome 2>/dev/null || true
     pkill -f chromium 2>/dev/null || true
+    
+    # 清理X11锁文件
     rm -f /tmp/.X*-lock 2>/dev/null || true
+    
+    # 清理Chrome锁文件
+    rm -f /app/browser_data/SingletonLock 2>/dev/null || true
+    rm -f /app/browser_data/SingletonSocket 2>/dev/null || true
+    rm -f /app/browser_data/SingletonCookie* 2>/dev/null || true
+    
     sleep 2
 }
 
 cleanup_processes
 
-# 创建X11目录
+# 创建必要目录
 mkdir -p /tmp/.X11-unix
 chmod 1777 /tmp/.X11-unix
+
+mkdir -p /app/browser_data
+chmod 755 /app/browser_data
 
 # 启动Xvfb
 echo "启动虚拟显示服务器..."
@@ -49,7 +61,6 @@ echo "✓ Fluxbox启动完成 (PID: $FLUXBOX_PID)"
 if [ "$VNC_MODE" = "true" ]; then
     echo "启动VNC服务器..."
     
-    # 启动x11vnc，增强兼容性
     x11vnc \
         -display :0 \
         -forever \
@@ -64,7 +75,6 @@ if [ "$VNC_MODE" = "true" ]; then
     
     sleep 2
     
-    # 检查VNC状态
     if pgrep -f x11vnc >/dev/null; then
         VNC_PID=$(pgrep -f x11vnc)
         echo "✓ VNC服务器启动成功 (PID: $VNC_PID)"
@@ -74,64 +84,54 @@ if [ "$VNC_MODE" = "true" ]; then
         exit 1
     fi
     
-    # 启动Chrome（改进版）
-    echo "启动Chrome浏览器..."
+    # 创建Chrome启动脚本（供VNC中手动使用）
+    echo "创建Chrome启动脚本..."
+    cat > /usr/local/bin/start-chrome << 'EOF'
+#!/bin/bash
+export DISPLAY=:0
+
+# 清理Chrome锁文件
+rm -f /app/browser_data/SingletonLock 2>/dev/null || true
+rm -f /app/browser_data/SingletonSocket 2>/dev/null || true
+rm -f /app/browser_data/SingletonCookie* 2>/dev/null || true
+
+# 启动Chrome
+google-chrome-stable \
+    --no-sandbox \
+    --disable-dev-shm-usage \
+    --disable-gpu \
+    --disable-software-rasterizer \
+    --disable-web-security \
+    --no-first-run \
+    --no-default-browser-check \
+    --user-data-dir=/app/browser_data \
+    --window-size=1920,1080 \
+    --start-maximized \
+    "https://www.xiaohongshu.com" \
+    2>/dev/null &
+
+echo "Chrome启动中..."
+EOF
+    chmod +x /usr/local/bin/start-chrome
     
-    # 检查Chrome可用性
-    CHROME_CMD=""
-    if command -v google-chrome-stable >/dev/null 2>&1; then
-        CHROME_CMD="google-chrome-stable"
-    elif command -v google-chrome >/dev/null 2>&1; then
-        CHROME_CMD="google-chrome"
-    elif command -v chromium-browser >/dev/null 2>&1; then
-        CHROME_CMD="chromium-browser"
-    elif command -v chromium >/dev/null 2>&1; then
-        CHROME_CMD="chromium"
-    fi
+    # 创建桌面快捷方式
+    mkdir -p /root/Desktop
+    cat > /root/Desktop/Chrome.desktop << 'EOF'
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Chrome浏览器
+Comment=启动Chrome访问小红书
+Exec=/usr/local/bin/start-chrome
+Icon=google-chrome
+Terminal=false
+Categories=Network;WebBrowser;
+EOF
+    chmod +x /root/Desktop/Chrome.desktop
     
-    if [ ! -z "$CHROME_CMD" ]; then
-        echo "找到浏览器: $CHROME_CMD"
-        
-        # 创建Chrome数据目录
-        mkdir -p /app/browser_data
-        chmod 755 /app/browser_data
-        
-        # 启动Chrome，增强参数
-        DISPLAY=:0 $CHROME_CMD \
-            --no-sandbox \
-            --disable-dev-shm-usage \
-            --disable-gpu \
-            --disable-software-rasterizer \
-            --disable-background-timer-throttling \
-            --disable-backgrounding-occluded-windows \
-            --disable-renderer-backgrounding \
-            --disable-features=VizDisplayCompositor \
-            --disable-extensions \
-            --disable-plugins \
-            --disable-web-security \
-            --disable-features=TranslateUI \
-            --no-first-run \
-            --no-default-browser-check \
-            --user-data-dir=/app/browser_data \
-            --window-size=1920,1080 \
-            --start-maximized \
-            "https://www.xiaohongshu.com" \
-            >/dev/null 2>&1 &
-        
-        CHROME_PID=$!
-        sleep 3
-        
-        # 检查Chrome状态
-        if kill -0 $CHROME_PID 2>/dev/null && pgrep -f "$CHROME_CMD" >/dev/null; then
-            echo "✓ Chrome启动成功 (PID: $CHROME_PID)"
-        else
-            echo "⚠ Chrome启动失败，但VNC可用于手动启动"
-            echo "  可以通过VNC手动打开浏览器"
-            CHROME_PID=""
-        fi
-    else
-        echo "⚠ 未找到Chrome浏览器，请通过VNC手动操作"
-    fi
+    echo "✓ Chrome启动脚本已创建"
+    echo "  在VNC桌面上双击Chrome图标启动浏览器"
+    echo "  或在终端中运行: start-chrome"
 fi
 
 echo "==================================="
@@ -139,16 +139,19 @@ echo "服务启动完成!"
 echo "MCP服务: http://<服务器IP>:8080"
 echo "VNC地址: <服务器IP>:5901 (无密码)"
 echo "API文档: http://<服务器IP>:8080/docs"
+echo ""
+echo "使用说明:"
+echo "1. 通过VNC连接到桌面"
+echo "2. 双击桌面上的Chrome图标启动浏览器"
+echo "3. 在浏览器中登录小红书账号"
+echo "4. 使用API进行搜索和评论操作"
 echo "==================================="
 
 # 清理函数
 cleanup() {
     echo "正在关闭服务..."
     
-    # 关闭Chrome
-    if [ ! -z "$CHROME_PID" ] && kill -0 "$CHROME_PID" 2>/dev/null; then
-        kill $CHROME_PID 2>/dev/null || true
-    fi
+    # 关闭所有Chrome进程
     pkill -f chrome 2>/dev/null || true
     pkill -f chromium 2>/dev/null || true
     
@@ -181,19 +184,15 @@ trap cleanup SIGTERM SIGINT
 echo "启动MCP服务..."
 cd /app
 
-# 确保目录权限正确
-chmod 755 /app
-chmod -R 755 /app/browser_data 2>/dev/null || true
-
-# 启动Python应用，增加错误处理
+# 启动Python应用
 python xiaohongshu_mcp_sse.py || {
     echo "Python应用启动失败，但保持容器运行用于调试"
-    echo "请检查VNC连接: <服务器IP>:5901"
+    echo "VNC地址: <服务器IP>:5901 (无密码)"
     
-    # 保持容器运行，方便调试
+    # 保持容器运行
     while true; do
-        echo "$(date): 容器保持运行中，VNC地址: <服务器IP>:5901"
-        sleep 300  # 每5分钟输出一次状态
+        echo "$(date): 容器运行中，请通过VNC操作"
+        sleep 300
     done
 }
 
