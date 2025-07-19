@@ -5,12 +5,14 @@ services:
     build: .
     container_name: xhs-mcp-server
     ports:
-      - "8080:8080"  # MCP服务端口
+      - "8080:8080"  # MCP HTTP服务端口
       - "5901:5900"  # VNC端口
     environment:
       - VNC_MODE=true
       - HEADLESS_MODE=false
       - BROWSER_DATA_DIR=/app/browser_data
+      - FASTMCP_LOG_LEVEL=INFO
+      - FASTMCP_MASK_ERROR_DETAILS=false
       
     volumes:
       - ./browser_data:/app/browser_data
@@ -20,9 +22,16 @@ services:
     shm_size: 2gb
     restart: unless-stopped
     
-    #healthcheck:
-    #  test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
-    #  interval: 30s
-    #  timeout: 10s
-    #  retries: 3
-    #  start_period: 60s
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    
+    networks:
+      - mcp-network
+
+networks:
+  mcp-network:
+    driver: bridge

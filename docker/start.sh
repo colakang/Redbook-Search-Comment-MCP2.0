@@ -1,7 +1,7 @@
 #!/bin/bash
 
 echo "==================================="
-echo "小红书MCP服务器启动中..."
+echo "小红书MCP服务器启动中... (Streamable HTTP模式)"
 echo "==================================="
 
 # 设置环境变量
@@ -16,6 +16,7 @@ cleanup_processes() {
     pkill -f x11vnc 2>/dev/null || true
     pkill -f chrome 2>/dev/null || true
     pkill -f chromium 2>/dev/null || true
+    pkill -f python 2>/dev/null || true
     
     # 清理X11锁文件
     rm -f /tmp/.X*-lock 2>/dev/null || true
@@ -36,6 +37,9 @@ chmod 1777 /tmp/.X11-unix
 
 mkdir -p /app/browser_data
 chmod 755 /app/browser_data
+
+mkdir -p /app/logs
+chmod 755 /app/logs
 
 # 启动Xvfb
 echo "启动虚拟显示服务器..."
@@ -132,19 +136,35 @@ EOF
     echo "✓ Chrome启动脚本已创建"
     echo "  在VNC桌面上双击Chrome图标启动浏览器"
     echo "  或在终端中运行: start-chrome"
+    
+    # 创建MCP服务状态检查脚本
+    cat > /usr/local/bin/check-mcp << 'EOF'
+#!/bin/bash
+echo "检查MCP服务状态..."
+echo "健康检查: $(curl -s http://localhost:8080/health 2>/dev/null || echo '服务未运行')"
+echo "服务状态: $(curl -s http://localhost:8080/status 2>/dev/null || echo '服务未运行')"
+echo "浏览器状态: $(curl -s http://localhost:8080/browser-status 2>/dev/null || echo '服务未运行')"
+EOF
+    chmod +x /usr/local/bin/check-mcp
 fi
 
 echo "==================================="
-echo "服务启动完成!"
-echo "MCP服务: http://<服务器IP>:8080"
+echo "环境启动完成!"
+echo "MCP服务(HTTP): http://<服务器IP>:8080/mcp"
+echo "健康检查: http://<服务器IP>:8080/health"
+echo "服务状态: http://<服务器IP>:8080/status"
+echo "浏览器状态: http://<服务器IP>:8080/browser-status"
+if [ "$VNC_MODE" = "true" ]; then
 echo "VNC地址: <服务器IP>:5901 (无密码)"
-echo "API文档: http://<服务器IP>:8080/docs"
+fi
 echo ""
 echo "使用说明:"
-echo "1. 通过VNC连接到桌面"
+echo "1. 通过VNC连接到桌面 (如果启用)"
 echo "2. 双击桌面上的Chrome图标启动浏览器"
 echo "3. 在浏览器中登录小红书账号"
-echo "4. 使用API进行搜索和评论操作"
+echo "4. 使用HTTP API进行搜索和评论操作"
+echo "   - 端点: http://服务器IP:8080/mcp"
+echo "   - 健康检查: http://服务器IP:8080/health"
 echo "==================================="
 
 # 清理函数
@@ -154,6 +174,9 @@ cleanup() {
     # 关闭所有Chrome进程
     pkill -f chrome 2>/dev/null || true
     pkill -f chromium 2>/dev/null || true
+    
+    # 关闭Python应用
+    pkill -f python 2>/dev/null || true
     
     # 关闭VNC
     if [ ! -z "$VNC_PID" ] && kill -0 "$VNC_PID" 2>/dev/null; then
@@ -180,20 +203,78 @@ cleanup() {
 # 信号处理
 trap cleanup SIGTERM SIGINT
 
-# 启动Python应用
-echo "启动MCP服务..."
+# 等待一会儿让所有服务稳定启动
+sleep 3
+
+# 启动MCP服务器
+echo "启动MCP Streamable HTTP服务器..."
 cd /app
 
-# 启动Python应用
-python xiaohongshu_mcp_sse.py || {
-    echo "Python应用启动失败，但保持容器运行用于调试"
-    echo "VNC地址: <服务器IP>:5901 (无密码)"
-    
-    # 保持容器运行
-    while true; do
-        echo "$(date): 容器运行中，请通过VNC操作"
-        sleep 300
-    done
-}
+# 检查Python文件是否存在
+if [ ! -f "xiaohongshu_mcp_sse.py" ]; then
+    echo "错误: xiaohongshu_mcp_sse.py 文件不存在"
+    echo "请确保文件已正确复制到容器中"
+    exit 1
+fi
 
-cleanup
+# 启动Python应用，并将日志输出到文件
+python xiaohongshu_mcp_sse.py 2>&1 | tee /app/logs/mcp_server.log &
+MCP_PID=$!
+
+# 等待服务启动
+echo "等待MCP服务启动..."
+sleep 10
+
+# 检查MCP服务是否正常启动
+for i in {1..30}; do
+    if curl -f http://localhost:8080/health >/dev/null 2>&1; then
+        echo "✓ MCP Streamable HTTP服务启动成功 (PID: $MCP_PID)"
+        echo "✓ 健康检查通过"
+        break
+    elif [ $i -eq 30 ]; then
+        echo "✗ MCP服务启动失败或健康检查超时"
+        echo "查看日志:"
+        tail -20 /app/logs/mcp_server.log
+        exit 1
+    else
+        echo "等待MCP服务启动... ($i/30)"
+        sleep 2
+    fi
+done
+
+echo "==================================="
+echo "🚀 小红书MCP服务器已启动 (Streamable HTTP模式)"
+echo "==================================="
+echo "服务地址: http://0.0.0.0:8080/mcp"
+echo "健康检查: http://0.0.0.0:8080/health"
+echo "服务状态: http://0.0.0.0:8080/status"
+echo "浏览器状态: http://0.0.0.0:8080/browser-status"
+if [ "$VNC_MODE" = "true" ]; then
+echo "VNC访问: <服务器IP>:5901"
+fi
+echo ""
+echo "测试命令:"
+echo "  健康检查: curl http://localhost:8080/health"
+echo "  状态检查: curl http://localhost:8080/status"
+echo "  浏览器状态: curl http://localhost:8080/browser-status"
+echo "==================================="
+
+# 保持容器运行，同时监控MCP进程
+while true; do
+    if ! kill -0 $MCP_PID 2>/dev/null; then
+        echo "MCP服务进程已停止，重启中..."
+        python xiaohongshu_mcp_sse.py 2>&1 | tee -a /app/logs/mcp_server.log &
+        MCP_PID=$!
+        sleep 5
+    fi
+    
+    # 定期输出状态
+    if [ $(($(date +%s) % 300)) -eq 0 ]; then
+        echo "$(date): MCP服务运行中 (PID: $MCP_PID)"
+        if [ "$VNC_MODE" = "true" ]; then
+            echo "VNC可访问: <服务器IP>:5901"
+        fi
+    fi
+    
+    sleep 10
+done
