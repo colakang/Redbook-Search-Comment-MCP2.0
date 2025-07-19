@@ -196,8 +196,9 @@ if [ ! -f "xiaohongshu_mcp_sse.py" ]; then
     exit 1
 fi
 
-# 启动Python应用，并将日志输出到文件
-python xiaohongshu_mcp_sse.py 2>&1 | tee /app/logs/mcp_server.log &
+# 启动Python应用，并将日志输出到文件和控制台
+# 使用无缓冲模式确保日志实时输出
+PYTHONUNBUFFERED=1 python xiaohongshu_mcp_sse.py 2>&1 | tee /app/logs/mcp_server.log &
 MCP_PID=$!
 
 # 等待服务启动
@@ -219,7 +220,7 @@ for i in {1..30}; do
         break
     elif [ $i -eq 30 ]; then
         echo "✗ MCP服务启动失败或进程检查超时"
-        echo "查看日志:"
+        echo "查看最近日志:"
         tail -20 /app/logs/mcp_server.log
         exit 1
     else
@@ -232,12 +233,12 @@ echo "==================================="
 echo "🚀 小红书MCP服务器已启动 (Streamable HTTP模式)"
 echo "==================================="
 echo "服务地址: http://0.0.0.0:8080/mcp/"
-echo "可用工具: login, search_notes, get_note_content, post_comment"
+echo "可用工具: login, search_notes, get_note_content, post_comment, analyze_note, post_smart_comment"
 if [ "$VNC_MODE" = "true" ]; then
 echo "VNC访问: <服务器IP>:5901"
 fi
 echo ""
-echo "测试命令（注意：需要正确的会话管理）:"
+echo "测试命令:"
 echo "curl -X POST http://localhost:8080/mcp/ \\"
 echo "  -H 'Content-Type: application/json' \\"
 echo "  -H 'Accept: application/json, text/event-stream' \\"
@@ -247,19 +248,19 @@ echo "==================================="
 # 保持容器运行，同时监控MCP进程
 while true; do
     if ! kill -0 $MCP_PID 2>/dev/null; then
-        echo "MCP服务进程已停止，重启中..."
-        python xiaohongshu_mcp_sse.py 2>&1 | tee -a /app/logs/mcp_server.log &
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] MCP服务进程已停止，重启中..."
+        PYTHONUNBUFFERED=1 python xiaohongshu_mcp_sse.py 2>&1 | tee -a /app/logs/mcp_server.log &
         MCP_PID=$!
         sleep 5
     fi
     
-    # 定期输出状态
-    if [ $(($(date +%s) % 300)) -eq 0 ]; then
-        echo "$(date): MCP服务运行中 (PID: $MCP_PID)"
+    # 减少状态输出频率，改为每10分钟输出一次
+    if [ $(($(date +%s) % 600)) -eq 0 ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] MCP服务运行中 (PID: $MCP_PID)"
         if [ "$VNC_MODE" = "true" ]; then
             echo "VNC可访问: <服务器IP>:5901"
         fi
     fi
     
-    sleep 10
+    sleep 30  # 增加检查间隔，减少资源消耗
 done

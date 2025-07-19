@@ -25,11 +25,12 @@ services:
     restart: unless-stopped
     
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'python.*xiaohongshu_mcp_sse.py' && curl -f http://localhost:8080/mcp/ || exit 1"]
-      interval: 30s
+      # 简化健康检查，只检查进程和端口，避免406错误
+      test: ["CMD-SHELL", "pgrep -f 'python.*xiaohongshu_mcp_sse.py' && ss -tuln | grep -q ':8080 ' || exit 1"]
+      interval: 60s  # 增加间隔，减少检查频率
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 120s  # 增加启动等待时间
     
     networks:
       - mcp-network

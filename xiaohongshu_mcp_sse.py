@@ -8,8 +8,8 @@ from playwright.async_api import async_playwright
 from fastmcp import FastMCP
 
 # 初始化 FastMCP 服务器 - 修复session问题
-# 使用stateless_http=True来避免session ID要求
-mcp = FastMCP("xiaohongshu_scraper", stateless_http=True)
+# 不在构造函数中使用stateless_http，而是在run方法中使用
+mcp = FastMCP("xiaohongshu_scraper")
 
 # 全局变量
 BROWSER_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "browser_data")
@@ -520,12 +520,13 @@ if __name__ == "__main__":
     print(f"启动服务在 {host}:{port}")
     
     try:
-        # 使用 streamable-http 传输方式，启用无状态模式
+        # 使用 streamable-http 传输方式，在run方法中启用无状态模式
         print("使用 streamable-http 传输（无状态模式）...")
         mcp.run(
             transport="streamable-http",
             host=host,
-            port=port
+            port=port,
+            stateless_http=True  # 在run方法中设置无状态模式
         )
     except Exception as e:
         print(f"streamable-http 启动失败: {e}")
