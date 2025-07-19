@@ -80,6 +80,7 @@ RUN playwright install chromium --with-deps
 
 # 复制应用文件
 COPY xiaohongshu_mcp_sse.py .
+COPY streamable_http_fix.py .
 COPY .env .
 COPY docker/ ./docker/
 
