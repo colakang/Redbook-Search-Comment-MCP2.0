@@ -77,14 +77,12 @@ RUN playwright install chromium --with-deps
 # 复制应用文件
 COPY xiaohongshu_mcp_sse.py .
 COPY .env .
-
-# 复制启动脚本
-COPY start.sh .
+COPY docker/ ./docker/
 
 # 创建目录并设置权限
 RUN mkdir -p browser_data data logs && \
     chmod -R 755 /app && \
-    chmod +x start.sh
+    chmod +x docker/start.sh
 
 # 暴露端口
 EXPOSE 8080 5900
@@ -94,4 +92,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD pgrep -f "python.*xiaohongshu_mcp_sse.py" && curl -f http://localhost:8080/mcp || exit 1
 
 # 启动命令
-CMD ["./start.sh"]
+CMD ["./docker/start.sh"]
