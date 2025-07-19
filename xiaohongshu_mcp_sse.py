@@ -7,11 +7,13 @@ from datetime import datetime
 from playwright.async_api import async_playwright
 from fastmcp import FastMCP
 
-# 初始化 FastMCP 服务器 - 添加描述和依赖信息
+# 初始化 FastMCP 服务器 - 添加描述和依赖信息，配置网络参数
 mcp = FastMCP(
     name="xiaohongshu_scraper",
     description="小红书笔记搜索和评论工具，支持搜索、内容获取、评论分析和智能评论发布",
-    dependencies=["playwright>=1.40.0", "pandas>=2.1.1", "tenacity>=8.0.0"]
+    dependencies=["playwright>=1.40.0", "pandas>=2.1.1", "tenacity>=8.0.0"],
+    host="0.0.0.0",  # 绑定到所有接口，允许外部访问
+    port=8080        # 指定端口
 )
 
 # 全局变量
@@ -795,15 +797,10 @@ if __name__ == "__main__":
     # 使用 Streamable HTTP 模式运行 MCP 服务器
     print("启动小红书MCP服务器 (Streamable HTTP模式)...")
     print("服务地址: http://0.0.0.0:8080/mcp")
-    print("健康检查: http://0.0.0.0:8080/health")
-    print("状态检查: http://0.0.0.0:8080/status")
-    print("浏览器状态: http://0.0.0.0:8080/browser-status")
+    print("健康检查工具: health_check")
+    print("状态检查工具: status_check")
+    print("浏览器状态工具: browser_status")
     
     # 运行服务器，使用 Streamable HTTP 传输
-    mcp.run(
-        transport="http",        # 使用 Streamable HTTP 模式
-        host="0.0.0.0",         # 绑定到所有接口，允许外部访问
-        port=8080,              # 端口号与 docker-compose.yml 一致
-        path="/mcp",            # MCP 端点路径
-        log_level="INFO"        # 日志级别
-    )
+    # 在 FastMCP 2.0 中，使用 "streamable-http" 传输名称
+    mcp.run(transport="streamable-http")
