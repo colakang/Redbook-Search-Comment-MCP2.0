@@ -7,6 +7,10 @@ echo "==================================="
 # 设置环境变量
 export DISPLAY=:0
 export DBUS_SESSION_BUS_ADDRESS=/dev/null
+# 设置 FastMCP 网络环境变量
+export FASTMCP_HOST=0.0.0.0
+export FASTMCP_PORT=8080
+export FASTMCP_LOG_LEVEL=INFO
 
 # 清理旧进程和锁文件
 cleanup_processes() {

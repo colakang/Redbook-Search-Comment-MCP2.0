@@ -64,11 +64,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# 验证关键依赖安装
+# 验证关键依赖安装并检查版本
 RUN python -c "import tenacity; print('tenacity OK')" && \
     python -c "import playwright; print('playwright OK')" && \
     python -c "import fastapi; print('fastapi OK')" && \
-    python -c "import fastmcp; print('fastmcp OK')"
+    python -c "import fastmcp; print('fastmcp version:', fastmcp.__version__ if hasattr(fastmcp, '__version__') else 'unknown')"
 
 # 安装 Playwright 浏览器
 RUN playwright install chromium --with-deps
