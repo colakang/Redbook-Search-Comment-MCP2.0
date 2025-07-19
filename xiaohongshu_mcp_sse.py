@@ -6,7 +6,6 @@ import pandas as pd
 from datetime import datetime
 from playwright.async_api import async_playwright
 from fastmcp import FastMCP
-from fastapi.responses import JSONResponse
 
 # 初始化 FastMCP 服务器 - 添加描述和依赖信息
 mcp = FastMCP(
@@ -746,33 +745,33 @@ async def post_comment(url: str, comment: str) -> str:
     except Exception as e:
         return f"发布评论时出错: {str(e)}"
 
-# 添加健康检查端点
-@mcp.get("/health")
-async def health_check():
-    """健康检查端点"""
-    return JSONResponse({
+# 添加健康检查工具
+@mcp.tool()
+async def health_check() -> dict:
+    """健康检查工具"""
+    return {
         "status": "healthy", 
         "service": "xiaohongshu_mcp",
         "timestamp": datetime.now().isoformat()
-    })
+    }
 
-# 添加状态检查端点
-@mcp.get("/status")
-async def status_check():
-    """状态检查端点"""
+# 添加状态检查工具
+@mcp.tool()
+async def status_check() -> dict:
+    """状态检查工具"""
     global browser_context, main_page, is_logged_in
-    return JSONResponse({
+    return {
         "browser_initialized": browser_context is not None,
         "page_available": main_page is not None,
         "logged_in": is_logged_in,
         "timestamp": datetime.now().isoformat(),
         "browser_data_dir": BROWSER_DATA_DIR
-    })
+    }
 
-# 添加浏览器状态端点
-@mcp.get("/browser-status")
-async def browser_status():
-    """浏览器状态检查端点"""
+# 添加浏览器状态检查工具
+@mcp.tool()
+async def browser_status() -> dict:
+    """浏览器状态检查工具"""
     global browser_context, main_page, is_logged_in
     
     status = {
@@ -790,7 +789,7 @@ async def browser_status():
         except Exception as e:
             status["browser_error"] = str(e)
     
-    return JSONResponse(status)
+    return status
 
 if __name__ == "__main__":
     # 使用 Streamable HTTP 模式运行 MCP 服务器

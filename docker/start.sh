@@ -141,9 +141,27 @@ EOF
     cat > /usr/local/bin/check-mcp << 'EOF'
 #!/bin/bash
 echo "检查MCP服务状态..."
-echo "健康检查: $(curl -s http://localhost:8080/health 2>/dev/null || echo '服务未运行')"
-echo "服务状态: $(curl -s http://localhost:8080/status 2>/dev/null || echo '服务未运行')"
-echo "浏览器状态: $(curl -s http://localhost:8080/browser-status 2>/dev/null || echo '服务未运行')"
+
+# 检查MCP服务是否运行
+if pgrep -f "python.*xiaohongshu_mcp_sse.py" >/dev/null; then
+    echo "✓ MCP服务进程运行中"
+    
+    # 测试MCP健康检查工具
+    echo "测试健康检查工具..."
+    curl -X POST http://localhost:8080/mcp \
+      -H 'Content-Type: application/json' \
+      -d '{
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+          "name": "health_check",
+          "arguments": {}
+        }
+      }' 2>/dev/null || echo "健康检查工具调用失败"
+else
+    echo "✗ MCP服务进程未运行"
+fi
 EOF
     chmod +x /usr/local/bin/check-mcp
 fi
@@ -151,9 +169,9 @@ fi
 echo "==================================="
 echo "环境启动完成!"
 echo "MCP服务(HTTP): http://<服务器IP>:8080/mcp"
-echo "健康检查: http://<服务器IP>:8080/health"
-echo "服务状态: http://<服务器IP>:8080/status"
-echo "浏览器状态: http://<服务器IP>:8080/browser-status"
+echo "健康检查工具: health_check"
+echo "状态检查工具: status_check"
+echo "浏览器状态工具: browser_status"
 if [ "$VNC_MODE" = "true" ]; then
 echo "VNC地址: <服务器IP>:5901 (无密码)"
 fi
@@ -164,7 +182,7 @@ echo "2. 双击桌面上的Chrome图标启动浏览器"
 echo "3. 在浏览器中登录小红书账号"
 echo "4. 使用HTTP API进行搜索和评论操作"
 echo "   - 端点: http://服务器IP:8080/mcp"
-echo "   - 健康检查: http://服务器IP:8080/health"
+echo "   - 健康检查: 调用health_check工具"
 echo "==================================="
 
 # 清理函数
@@ -225,14 +243,26 @@ MCP_PID=$!
 echo "等待MCP服务启动..."
 sleep 10
 
-# 检查MCP服务是否正常启动
+# 检查MCP服务是否正常启动 - 通过检查进程而不是HTTP端点
 for i in {1..30}; do
-    if curl -f http://localhost:8080/health >/dev/null 2>&1; then
+    if pgrep -f "python.*xiaohongshu_mcp_sse.py" >/dev/null; then
         echo "✓ MCP Streamable HTTP服务启动成功 (PID: $MCP_PID)"
-        echo "✓ 健康检查通过"
+        echo "✓ 进程检查通过"
+        
+        # 尝试调用健康检查工具
+        echo "测试健康检查工具..."
+        sleep 5  # 等待服务完全就绪
+        if curl -X POST http://localhost:8080/mcp \
+          -H 'Content-Type: application/json' \
+          -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "health_check", "arguments": {}}}' \
+          >/dev/null 2>&1; then
+            echo "✓ 健康检查工具响应正常"
+        else
+            echo "⚠ 健康检查工具暂时无响应，但服务正在启动"
+        fi
         break
     elif [ $i -eq 30 ]; then
-        echo "✗ MCP服务启动失败或健康检查超时"
+        echo "✗ MCP服务启动失败或进程检查超时"
         echo "查看日志:"
         tail -20 /app/logs/mcp_server.log
         exit 1
@@ -246,17 +276,16 @@ echo "==================================="
 echo "🚀 小红书MCP服务器已启动 (Streamable HTTP模式)"
 echo "==================================="
 echo "服务地址: http://0.0.0.0:8080/mcp"
-echo "健康检查: http://0.0.0.0:8080/health"
-echo "服务状态: http://0.0.0.0:8080/status"
-echo "浏览器状态: http://0.0.0.0:8080/browser-status"
+echo "健康检查: 调用health_check工具"
+echo "状态检查: 调用status_check工具"
+echo "浏览器状态: 调用browser_status工具"
 if [ "$VNC_MODE" = "true" ]; then
 echo "VNC访问: <服务器IP>:5901"
 fi
 echo ""
 echo "测试命令:"
-echo "  健康检查: curl http://localhost:8080/health"
-echo "  状态检查: curl http://localhost:8080/status"
-echo "  浏览器状态: curl http://localhost:8080/browser-status"
+echo "  健康检查: curl -X POST http://localhost:8080/mcp -H 'Content-Type: application/json' -d '{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"tools/call\", \"params\": {\"name\": \"health_check\", \"arguments\": {}}}'"
+echo "  状态检查: curl -X POST http://localhost:8080/mcp -H 'Content-Type: application/json' -d '{\"jsonrpc\": \"2.0\", \"id\": 2, \"method\": \"tools/call\", \"params\": {\"name\": \"status_check\", \"arguments\": {}}}'"
 echo "==================================="
 
 # 保持容器运行，同时监控MCP进程

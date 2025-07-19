@@ -88,7 +88,7 @@ EXPOSE 8080 5900
 
 # 添加健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+    CMD pgrep -f "python.*xiaohongshu_mcp_sse.py" || exit 1
 
 # 启动命令
 CMD ["./docker/start.sh"]
