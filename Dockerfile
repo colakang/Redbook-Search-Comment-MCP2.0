@@ -78,15 +78,15 @@ RUN python -c "import tenacity; print('tenacity OK')" && \
 # 安装 Playwright 浏览器
 RUN playwright install chromium --with-deps
 
-# 复制应用文件（移除不存在的streamable_http_fix.py）
+# 复制应用文件
 COPY xiaohongshu_mcp_sse.py .
 COPY .env .
-COPY start.sh ./
+COPY docker/ ./docker/
 
 # 创建目录并设置权限
 RUN mkdir -p browser_data data logs && \
     chmod -R 755 /app && \
-    chmod +x start.sh
+    chmod +x docker/start.sh
 
 # 暴露端口
 EXPOSE 8080 5900
