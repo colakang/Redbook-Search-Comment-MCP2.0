@@ -1,7 +1,7 @@
-fastmcp>=2.0.0
+fastmcp
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
-mcp[cli]>=1.0.0
+mcp[cli]
 playwright>=1.40.0
 python-dotenv==1.0.0
 requests==2.31.0
