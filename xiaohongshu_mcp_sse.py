@@ -792,62 +792,25 @@ async def browser_status() -> dict:
     return status
 
 if __name__ == "__main__":
-    # 使用 Streamable HTTP 模式运行 MCP 服务器
+    # 使用 Streamable HTTP 模式运行 MCP 服务器（推荐方式）
     print("启动小红书MCP服务器 (Streamable HTTP模式)...")
     print("健康检查工具: health_check")
     print("状态检查工具: status_check") 
     print("浏览器状态工具: browser_status")
     
-    # 根据 FastMCP 文档，正确的传输名称和参数
-    try:
-        # 首先尝试新版本的 streamable-http
-        print("尝试使用 streamable-http 传输...")
-        mcp.run(
-            transport="streamable-http",
-            host="0.0.0.0",
-            port=8080,
-            log_level="INFO"
-        )
-    except ValueError as e:
-        if "Unknown transport" in str(e):
-            print(f"streamable-http 不支持，尝试 http: {e}")
-            try:
-                # 尝试使用 http 传输
-                mcp.run(
-                    transport="http", 
-                    host="0.0.0.0",
-                    port=8080,
-                    log_level="INFO"
-                )
-            except Exception as e2:
-                print(f"http 传输也失败，使用 sse: {e2}")
-                try:
-                    mcp.run(
-                        transport="sse",
-                        host="0.0.0.0", 
-                        port=8080,
-                        log_level="INFO"
-                    )
-                except Exception as e3:
-                    print(f"sse 也失败，使用默认设置: {e3}")
-                    mcp.run()
-        else:
-            raise
-    except TypeError as e:
-        if "unexpected keyword argument" in str(e):
-            print(f"参数不支持，使用简化版本: {e}")
-            try:
-                mcp.run(transport="streamable-http")
-            except ValueError:
-                print("尝试使用 http 传输...")
-                try:
-                    mcp.run(transport="http")
-                except ValueError:
-                    print("尝试使用 sse 传输...")
-                    try:
-                        mcp.run(transport="sse")
-                    except Exception:
-                        print("使用默认传输...")
-                        mcp.run()
-        else:
-            raise
+    # 从环境变量获取配置
+    host = os.getenv("FASTMCP_HOST", "0.0.0.0")
+    port = int(os.getenv("FASTMCP_PORT", "8080"))
+    log_level = os.getenv("FASTMCP_LOG_LEVEL", "INFO")
+    
+    print(f"启动服务在 {host}:{port}/mcp")
+    print(f"日志级别: {log_level}")
+    
+    # 使用最新的 streamable-http 传输方式
+    mcp.run(
+        transport="http",
+        host=host,
+        port=port,
+        path="/mcp",
+        log_level=log_level.lower()
+    )

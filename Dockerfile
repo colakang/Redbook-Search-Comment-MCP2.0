@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     procps \
     psmisc \
+    net-tools \
     fonts-liberation \
     libasound2 \
     libatk-bridge2.0-0 \
@@ -73,22 +74,24 @@ RUN python -c "import tenacity; print('tenacity OK')" && \
 # 安装 Playwright 浏览器
 RUN playwright install chromium --with-deps
 
-# 复制应用文件 - 注意文件名匹配
+# 复制应用文件
 COPY xiaohongshu_mcp_sse.py .
 COPY .env .
-COPY docker/ ./docker/
+
+# 复制启动脚本
+COPY start.sh .
 
 # 创建目录并设置权限
 RUN mkdir -p browser_data data logs && \
     chmod -R 755 /app && \
-    chmod +x docker/start.sh
+    chmod +x start.sh
 
 # 暴露端口
 EXPOSE 8080 5900
 
 # 添加健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD pgrep -f "python.*xiaohongshu_mcp_sse.py" || exit 1
+    CMD pgrep -f "python.*xiaohongshu_mcp_sse.py" && curl -f http://localhost:8080/mcp || exit 1
 
 # 启动命令
-CMD ["./docker/start.sh"]
+CMD ["./start.sh"]

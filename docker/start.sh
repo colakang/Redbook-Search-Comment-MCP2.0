@@ -253,16 +253,31 @@ for i in {1..30}; do
         echo "✓ MCP Streamable HTTP服务启动成功 (PID: $MCP_PID)"
         echo "✓ 进程检查通过"
         
-        # 尝试调用健康检查工具
+        # 尝试调用健康检查工具 - 测试正确的端口和路径
         echo "测试健康检查工具..."
         sleep 5  # 等待服务完全就绪
-        if curl -X POST http://localhost:8080/mcp \
-          -H 'Content-Type: application/json' \
-          -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "health_check", "arguments": {}}}' \
-          >/dev/null 2>&1; then
-            echo "✓ 健康检查工具响应正常"
+        
+        # 检查端口是否监听
+        if netstat -tuln 2>/dev/null | grep -q ":8080 " || ss -tuln 2>/dev/null | grep -q ":8080 "; then
+            echo "✓ 端口8080已监听"
+            
+            # 测试健康检查 - 使用正确的 streamable-http 端点
+            if curl -X POST http://localhost:8080/mcp \
+              -H 'Content-Type: application/json' \
+              -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "health_check", "arguments": {}}}' \
+              >/dev/null 2>&1; then
+                echo "✓ 健康检查工具响应正常"
+            else
+                echo "⚠ 健康检查工具暂时无响应，但服务正在启动"
+                echo "尝试简单的端点测试..."
+                if curl -f http://localhost:8080/mcp >/dev/null 2>&1; then
+                    echo "✓ MCP端点可访问"
+                else
+                    echo "⚠ MCP端点暂时无响应"
+                fi
+            fi
         else
-            echo "⚠ 健康检查工具暂时无响应，但服务正在启动"
+            echo "⚠ 端口8080暂未监听，服务可能仍在启动中"
         fi
         break
     elif [ $i -eq 30 ]; then
