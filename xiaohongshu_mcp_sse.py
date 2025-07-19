@@ -808,7 +808,7 @@ if __name__ == "__main__":
     
     # 使用最新的 streamable-http 传输方式
     mcp.run(
-        transport="http",
+        transport="streamable-http",
         host=host,
         port=port,
         path="/mcp",

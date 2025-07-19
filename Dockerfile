@@ -63,13 +63,17 @@ COPY requirements.txt .
 
 # 安装 Python 依赖
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir --upgrade -r requirements.txt
+
+# 强制升级到最新版本的 FastMCP
+RUN pip install --no-cache-dir --upgrade fastmcp>=2.10.0
 
 # 验证关键依赖安装并检查版本
 RUN python -c "import tenacity; print('tenacity OK')" && \
     python -c "import playwright; print('playwright OK')" && \
-    python -c "import fastapi; print('fastapi OK')" && \
-    python -c "import fastmcp; print('fastmcp version:', fastmcp.__version__ if hasattr(fastmcp, '__version__') else 'unknown')"
+    python -c "import fastmcp; print('fastmcp version:', fastmcp.__version__ if hasattr(fastmcp, '__version__') else 'unknown')" && \
+    echo "FastMCP version check:" && \
+    pip show fastmcp
 
 # 安装 Playwright 浏览器
 RUN playwright install chromium --with-deps
