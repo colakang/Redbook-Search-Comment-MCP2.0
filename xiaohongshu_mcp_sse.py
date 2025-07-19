@@ -1,4 +1,4 @@
-from typing import Any, List, Dict, Optional
+from typing import Any, List, Dict, Optional, Literal
 import asyncio
 import json
 import os
@@ -7,10 +7,9 @@ from datetime import datetime
 from playwright.async_api import async_playwright
 from fastmcp import FastMCP
 
-# 初始化 FastMCP 服务器 - 添加描述和依赖信息
+# 初始化 FastMCP 服务器 - 修复 2.10.0+ API
 mcp = FastMCP(
     name="xiaohongshu_scraper",
-    description="小红书笔记搜索和评论工具，支持搜索、内容获取、评论分析和智能评论发布",
     dependencies=["playwright>=1.40.0", "pandas>=2.1.1", "tenacity>=8.0.0"]
 )
 
@@ -154,9 +153,18 @@ async def search_notes(keywords: str, limit: int = 5) -> str:
     """根据关键词搜索笔记
     
     Args:
-        keywords: 搜索关键词
-        limit: 返回结果数量限制
+        keywords: 搜索关键词，不能为空
+        limit: 返回结果数量限制，范围1-20
+    
+    Returns:
+        包含搜索结果的格式化文本
     """
+    if not keywords.strip():
+        raise ValueError("搜索关键词不能为空")
+    
+    if limit < 1 or limit > 20:
+        raise ValueError("返回结果数量限制必须在1-20之间")
+    
     login_status = await ensure_browser()
     if not login_status:
         return "请先登录小红书账号"
@@ -273,7 +281,7 @@ async def search_notes(keywords: str, limit: int = 5) -> str:
             return f"未找到与\"{keywords}\"相关的笔记"
     
     except Exception as e:
-        return f"搜索笔记时出错: {str(e)}"
+        raise RuntimeError(f"搜索笔记时出错: {str(e)}")
 
 @mcp.tool()
 async def get_note_content(url: str) -> str:
@@ -537,15 +545,24 @@ async def get_note_comments(url: str) -> str:
         return f"获取评论时出错: {str(e)}"
 
 @mcp.tool()
-async def analyze_note(url: str) -> dict:
+async def analyze_note(url: str) -> str:
     """获取并分析笔记内容，返回笔记的详细信息供AI生成评论
     
     Args:
-        url: 笔记 URL
+        url: 笔记 URL，必须是有效的小红书链接
+        
+    Returns:
+        JSON格式的字符串，包含笔记的详细分析信息
     """
+    if not url or not url.strip():
+        raise ValueError("笔记URL不能为空")
+    
+    if "xiaohongshu.com" not in url:
+        raise ValueError("必须是有效的小红书链接")
+    
     login_status = await ensure_browser()
     if not login_status:
-        return {"error": "请先登录小红书账号"}
+        raise RuntimeError("请先登录小红书账号")
     
     try:
         # 处理URL
@@ -556,7 +573,7 @@ async def analyze_note(url: str) -> dict:
         
         # 检查是否获取成功
         if note_content_result.startswith("请先登录") or note_content_result.startswith("无法获取笔记内容") or note_content_result.startswith("获取笔记内容时出错"):
-            return {"error": note_content_result}
+            raise RuntimeError(note_content_result)
         
         # 解析获取到的笔记内容
         content_lines = note_content_result.strip().split('\n')
@@ -606,7 +623,7 @@ async def analyze_note(url: str) -> dict:
             detected_domains = ["生活"]
         
         # 返回分析结果
-        return {
+        result = {
             "url": url,
             "标题": post_content.get("标题", "未知标题"),
             "作者": post_content.get("作者", "未知作者"),
@@ -614,17 +631,19 @@ async def analyze_note(url: str) -> dict:
             "领域": detected_domains,
             "关键词": list(set(words))[:20]  # 取前20个不重复的词作为关键词
         }
+        
+        return json.dumps(result, ensure_ascii=False, indent=2)
     
     except Exception as e:
-        return {"error": f"分析笔记内容时出错: {str(e)}"}
+        raise RuntimeError(f"分析笔记内容时出错: {str(e)}")
 
 @mcp.tool()
-async def post_smart_comment(url: str, comment_type: str = "引流") -> dict:
+async def post_smart_comment(url: str, comment_type: Literal["引流", "点赞", "咨询", "专业"] = "引流") -> str:
     """
     根据帖子内容发布智能评论，增加曝光并引导用户关注或私聊
 
     Args:
-        url: 笔记 URL
+        url: 笔记 URL，必须是有效的小红书链接
         comment_type: 评论类型，可选值:
                      "引流" - 引导用户关注或私聊
                      "点赞" - 简单互动获取好感
@@ -632,8 +651,14 @@ async def post_smart_comment(url: str, comment_type: str = "引流") -> dict:
                      "专业" - 展示专业知识建立权威
 
     Returns:
-        dict: 包含笔记信息和评论类型的字典，供MCP客户端(如Claude)生成评论
+        JSON格式的字符串，包含笔记信息和评论指导
     """
+    if not url or not url.strip():
+        raise ValueError("笔记URL不能为空")
+    
+    if "xiaohongshu.com" not in url:
+        raise ValueError("必须是有效的小红书链接")
+    
     # 处理URL
     processed_url = process_url(url)
     
@@ -641,7 +666,7 @@ async def post_smart_comment(url: str, comment_type: str = "引流") -> dict:
     note_info = await analyze_note(processed_url)
     
     if "error" in note_info:
-        return {"error": note_info["error"]}
+        raise RuntimeError(note_info["error"])
     
     # 评论类型指导
     comment_guides = {
@@ -651,29 +676,46 @@ async def post_smart_comment(url: str, comment_type: str = "引流") -> dict:
         "专业": '生成一条展示专业知识的评论，针对笔记内容提供专业见解或补充信息。'
     }
     
-    # 返回笔记分析结果和评论类型
-    return {
+    # 返回结构化的JSON结果
+    result = {
         "note_info": note_info,
         "comment_type": comment_type,
         "comment_guide": comment_guides.get(comment_type, ""),
         "url": url,
         "message": "请根据笔记内容和评论类型指南，生成一条自然、相关的评论。"
     }
+    
+    return json.dumps(result, ensure_ascii=False, indent=2)
 
 @mcp.tool()
 async def post_comment(url: str, comment: str) -> str:
     """发布评论到指定笔记
     
     Args:
-        url: 笔记 URL
-        comment: 要发布的评论内容
+        url: 笔记 URL，必须是有效的小红书链接
+        comment: 要发布的评论内容，不能为空
+    
+    Returns:
+        评论发布结果的描述
     """
+    if not url or not url.strip():
+        raise ValueError("笔记URL不能为空")
+    
+    if not comment or not comment.strip():
+        raise ValueError("评论内容不能为空")
+    
+    if "xiaohongshu.com" not in url:
+        raise ValueError("必须是有效的小红书链接")
+    
+    if len(comment.strip()) > 500:
+        raise ValueError("评论内容过长，请控制在500字符以内")
+    
     login_status = await ensure_browser()
     if not login_status:
-        return "请先登录小红书账号，才能发布评论"
+        raise RuntimeError("请先登录小红书账号，才能发布评论")
     
     if not main_page:
-        return "浏览器初始化失败，请重试"
+        raise RuntimeError("浏览器初始化失败，请重试")
     
     try:
         # 处理URL
@@ -706,13 +748,13 @@ async def post_comment(url: str, comment: str) -> str:
                 continue
         
         if not comment_input:
-            return "未能找到评论输入框，无法发布评论"
+            raise RuntimeError("未能找到评论输入框，无法发布评论")
         
         # 输入评论内容
         await comment_input.click()
         await asyncio.sleep(1)
         
-        await main_page.keyboard.type(comment)
+        await main_page.keyboard.type(comment.strip())
         await asyncio.sleep(1)
         
         # 发送评论
@@ -738,40 +780,59 @@ async def post_comment(url: str, comment: str) -> str:
                 print(f"使用Enter键发送出错: {str(e)}")
         
         if send_success:
-            return f"已成功发布评论：{comment}"
+            return f"已成功发布评论：{comment.strip()}"
         else:
-            return "发布评论失败，请检查评论内容或网络连接"
+            raise RuntimeError("发布评论失败，请检查评论内容或网络连接")
     
     except Exception as e:
-        return f"发布评论时出错: {str(e)}"
+        if "ValueError" in str(type(e)) or "RuntimeError" in str(type(e)):
+            raise
+        else:
+            raise RuntimeError(f"发布评论时出错: {str(e)}")
 
 # 添加健康检查工具
 @mcp.tool()
-async def health_check() -> dict:
-    """健康检查工具"""
-    return {
+async def health_check() -> str:
+    """健康检查工具，验证服务是否正常运行
+    
+    Returns:
+        JSON格式的健康状态信息
+    """
+    health_status = {
         "status": "healthy", 
         "service": "xiaohongshu_mcp",
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        "version": "2.0.0"
     }
+    return json.dumps(health_status, ensure_ascii=False, indent=2)
 
 # 添加状态检查工具
 @mcp.tool()
-async def status_check() -> dict:
-    """状态检查工具"""
+async def status_check() -> str:
+    """状态检查工具，获取服务详细状态信息
+    
+    Returns:
+        JSON格式的状态信息
+    """
     global browser_context, main_page, is_logged_in
-    return {
+    
+    status = {
         "browser_initialized": browser_context is not None,
         "page_available": main_page is not None,
         "logged_in": is_logged_in,
         "timestamp": datetime.now().isoformat(),
         "browser_data_dir": BROWSER_DATA_DIR
     }
+    return json.dumps(status, ensure_ascii=False, indent=2)
 
 # 添加浏览器状态检查工具
 @mcp.tool()
-async def browser_status() -> dict:
-    """浏览器状态检查工具"""
+async def browser_status() -> str:
+    """浏览器状态检查工具，获取浏览器详细状态
+    
+    Returns:
+        JSON格式的浏览器状态信息
+    """
     global browser_context, main_page, is_logged_in
     
     status = {
@@ -789,7 +850,7 @@ async def browser_status() -> dict:
         except Exception as e:
             status["browser_error"] = str(e)
     
-    return status
+    return json.dumps(status, ensure_ascii=False, indent=2)
 
 if __name__ == "__main__":
     # 使用 Streamable HTTP 模式运行 MCP 服务器（推荐方式）
