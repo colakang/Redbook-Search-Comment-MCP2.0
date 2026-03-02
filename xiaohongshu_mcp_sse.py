@@ -173,7 +173,7 @@ async def search_notes(keywords: str, limit: int = 5) -> dict:
 
         if results:
             return _ok({"count": len(results), "notes": results})
-        return _err(f"未找到与"{keywords}"相关的笔记")
+        return _err(f"未找到与 {keywords} 相关的笔记")
 
     except Exception as e:
         return _err(f"搜索出错: {e}")
@@ -433,10 +433,10 @@ async def post_smart_comment(url: str, comment_type: str = "引流") -> dict:
         comment_type: 评论类型 — 引流 / 点赞 / 咨询 / 专业
     """
     guides = {
-        "引流": "认同内容，引导私信互动，结尾加"欢迎私信"或"有问题找我聊"，≤30字",
+        "引流": '认同内容，引导私信互动，结尾加"欢迎私信"或"有问题找我聊"，≤30字',
         "点赞": "简短赞美，提及作者或领域，≤20字",
-        "咨询": "以"请问博主"开头，针对内容提具体问题，≤30字",
-        "专业": "以"从专业角度"开头，补充专业见解，≤30字",
+        "咨询": '以"请问博主"开头，针对内容提具体问题，≤30字',
+        "专业": '以"从专业角度"开头，补充专业见解，≤30字',
     }
     if comment_type not in guides:
         return _err(f"comment_type 需为：{', '.join(guides.keys())}")
